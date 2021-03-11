@@ -1,6 +1,5 @@
-#ifndef VL53L0X_h
-#define VL53L0X_h
-
+#include <stdio.h>
+#include "pico/stdlib.h"
 #include "hardware/i2c.h"
 
 class VL53L0X
@@ -100,11 +99,16 @@ public:
 
   uint8_t last_status; // status of last I2C transmission
 
-  VL53L0X();
+  void startTimeout();
+  bool checkTimeoutExpired();
 
   void setAddress(uint8_t new_addr);
-  inline uint8_t getAddress() { return address; }
+  inline uint8_t getAddress()
+  {
+    return address;
+  }
 
+  void init_i2c(uint8_t i2c, uint8_t SDA_pin, uint8_t SCL_pin);
   bool init(bool io_2v8 = true);
 
   void writeReg(uint8_t reg, uint8_t value);
@@ -131,18 +135,27 @@ public:
   uint16_t readRangeContinuousMillimeters();
   uint16_t readRangeSingleMillimeters();
 
-  inline void setTimeout(uint16_t timeout) { io_timeout = timeout; }
-  inline uint16_t getTimeout() { return io_timeout; }
+  inline void setTimeout(uint16_t timeout)
+  {
+    io_timeout = timeout;
+  }
+  inline uint16_t getTimeout()
+  {
+    return io_timeout;
+  }
   bool timeoutOccurred();
 
 private:
+  bool DEBUG_WRITE = false;
+  bool DEBUG_READ = false;
+
   // TCC: Target CentreCheck
   // MSRC: Minimum Signal Rate Check
   // DSS: Dynamic Spad Selection
 
   struct SequenceStepEnables
   {
-    boolean tcc, msrc, dss, pre_range, final_range;
+    bool tcc, msrc, dss, pre_range, final_range;
   };
 
   struct SequenceStepTimeouts
@@ -153,7 +166,7 @@ private:
     uint32_t msrc_dss_tcc_us, pre_range_us, final_range_us;
   };
 
-  i2c_inst_t i2c_inst;
+  i2c_inst_t *i2c_inst;
   uint8_t address;
   uint16_t io_timeout;
   bool did_timeout;
@@ -174,5 +187,3 @@ private:
   static uint32_t timeoutMclksToMicroseconds(uint16_t timeout_period_mclks, uint8_t vcsel_period_pclks);
   static uint32_t timeoutMicrosecondsToMclks(uint32_t timeout_period_us, uint8_t vcsel_period_pclks);
 };
-
-#endif
