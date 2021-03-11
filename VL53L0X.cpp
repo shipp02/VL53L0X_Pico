@@ -5,14 +5,16 @@
 // or paraphrased from the API source code, API user manual (UM2039), and the
 // VL53L0X datasheet.
 
-#include "VL53L0X.h"
+#include <stdio.h>
+#include "VL53L0X.hpp"
+#include "pico/stdlib.h"
 #include "hardware/i2c.h"
 
 // Defines /////////////////////////////////////////////////////////////////////
 
 // The Arduino two-wire interface uses a 7-bit number for the address,
 // and sets the last bit correctly based on reads and writes
-#define ADDRESS_DEFAULT 0b0101001
+#define ADDRESS_DEFAULT 0x29
 
 // Decode VCSEL (vertical cavity surface emitting laser) pulse period in PCLKs
 // from register value
@@ -30,18 +32,6 @@
 
 // Constructors ////////////////////////////////////////////////////////////////
 
-VL53L0X::VL53L0X(i2c_inst_t i2c_inst, uint8_t SDA_pin, uint8_t SCL_pin)
-{
-  i2c_init(i2c_inst, 100 * 1000);
-  address = ADDRESS_DEFAULT;
-  io_timeout = 0; //no timeout
-  did_timeout = false;
-  gpio_set_function(SDA_pin, GPIO_FUNC_I2C);
-  gpio_set_function(SCL_pin, GPIO_FUNC_I2C);
-  gpio_pull_up(4);
-  gpio_pull_up(5);
-}
-
 // Redefine Timing Methods for Pico
 // Record the current time to check an upcoming timeout against
 void VL53L0X::startTimeout()
@@ -51,11 +41,11 @@ void VL53L0X::startTimeout()
 }
 
 // Check if timeout is enabled (set to nonzero value) and has expired
-void VL53L0X::checkTimeoutExpired()
+bool VL53L0X::checkTimeoutExpired()
 {
   absolute_time_t now = get_absolute_time();
   uint16_t millis = to_ms_since_boot(now);
-  io_timeout > 0 && (millis - timeout_start_ms) > io_timeout;
+  return (io_timeout > 0 && (millis - timeout_start_ms) > io_timeout);
 }
 
 // Public Methods //////////////////////////////////////////////////////////////
@@ -66,6 +56,25 @@ void VL53L0X::setAddress(uint8_t new_addr)
   address = new_addr;
 }
 
+void VL53L0X::init_i2c(uint8_t i2c, uint8_t SDA_pin, uint8_t SCL_pin)
+{
+  if (i2c == 0)
+  {
+    i2c_inst = i2c0;
+  }
+  else if (i2c == 1)
+  {
+    i2c_inst = i2c1;
+  }
+  i2c_init(i2c_inst, 100 * 1000);
+  address = ADDRESS_DEFAULT;
+  io_timeout = 0; //no timeout
+  did_timeout = false;
+  gpio_set_function(SDA_pin, GPIO_FUNC_I2C);
+  gpio_set_function(SCL_pin, GPIO_FUNC_I2C);
+  gpio_pull_up(SDA_pin);
+  gpio_pull_up(SCL_pin);
+}
 // Initialize sensor using sequence based on VL53L0X_DataInit(),
 // VL53L0X_StaticInit(), and VL53L0X_PerformRefCalibration().
 // This function does not perform reference SPAD calibration
@@ -312,40 +321,54 @@ bool VL53L0X::init(bool io_2v8)
 // Write an 8-bit register
 void VL53L0X::writeReg(uint8_t reg, uint8_t value)
 {
-  uint8_t regBuf = reg;
-  uint8_t valueBuf = value;
-  i2c_write_raw_blocking(i2c_inst, address, &regBuf, 1);
-  i2c_write_raw_blocking(i2c_inst, address, &valueBuf, 1);
+  uint8_t Buf[2];
+  Buf[0] = reg;
+  Buf[1] = value;
+  i2c_write_blocking(i2c_inst, address, Buf, 2, false);
+
+  if (DEBUG_WRITE)
+  {
+    printf("w1 %i : %i", reg, value);
+    printf("  ::  %i : %i\n", reg, readReg(reg));
+  }
   last_status = 0;
 }
 
 // Write a 16-bit register
 void VL53L0X::writeReg16Bit(uint8_t reg, uint16_t value)
 {
-  uint8_t regBuf = reg;
-  uint8_t valueBuf[2] = value;
-  value[0] = (value >> 8) & 0xFF);
-  value[1] = value & 0xFF;
+  uint8_t Buf[3];
+  Buf[0] = reg;
+  Buf[1] = (value >> 8) & 0xFF;
+  Buf[2] = value & 0xFF;
 
-  i2c_write_raw_blocking(i2c_inst, address, &regBuf, 1);
-  i2c_write_raw_blocking(i2c_inst, address, valueBuf, 2);
+  i2c_write_blocking(i2c_inst, address, Buf, 3, false);
 
+  if (DEBUG_WRITE)
+  {
+    printf("w2 %i : %i", reg, value);
+    printf("  ::  %i : %i\n", reg, readReg16Bit(reg));
+  }
   last_status = 0;
 }
 
 // Write a 32-bit register
 void VL53L0X::writeReg32Bit(uint8_t reg, uint32_t value)
 {
-  uint8_t regBuf = reg;
-  uint8_t valueBuf[4];
-  value[0] = ((value >> 24) & 0xFF);
-  value[1] = ((value >> 16) & 0xFF);
-  value[2] = ((value >> 8) & 0xFF);
-  value[3] = (value & 0xFF);
+  uint8_t Buf[5];
+  Buf[0] = reg;
+  Buf[1] = (uint8_t)((value >> 24) & 0xFF);
+  Buf[2] = (uint8_t)((value >> 16) & 0xFF);
+  Buf[3] = (uint8_t)((value >> 8) & 0xFF);
+  Buf[4] = (uint8_t)(value & 0xFF);
 
-  i2c_write_blocking(i2c_inst, address, &regBuf, 1);
-  i2c_write_blocking(i2c_inst, address, valueBuf, 4);
+  i2c_write_blocking(i2c_inst, address, Buf, 5, false);
 
+  if (DEBUG_WRITE)
+  {
+    printf("w4 %i : %i", reg, value);
+    printf("  ::  %i : %i\n", reg, readReg32Bit(reg));
+  }
   last_status = 0;
 }
 
@@ -353,9 +376,15 @@ void VL53L0X::writeReg32Bit(uint8_t reg, uint32_t value)
 uint8_t VL53L0X::readReg(uint8_t reg)
 {
   uint8_t regBuf = reg;
+  i2c_write_blocking(i2c_inst, address, &regBuf, 1, true);
+  last_status = 0;
+
   uint8_t value;
-  i2c_write_blocking(i2c_inst, address, &regBuf, 1);
-  last_status = i2c_read_blocking(i2c0, address, &value, 1, false);
+  i2c_read_blocking(i2c0, address, &value, 1, false);
+  if (DEBUG_READ)
+  {
+    printf("r1 %i : %i\n", regBuf, value);
+  }
   return value;
 }
 
@@ -363,29 +392,50 @@ uint8_t VL53L0X::readReg(uint8_t reg)
 uint16_t VL53L0X::readReg16Bit(uint8_t reg)
 {
   uint8_t regBuf = reg;
+  i2c_write_blocking(i2c_inst, address, &regBuf, 1, true);
+  last_status = 0;
+
   uint8_t value[2];
-  i2c_write_blocking(i2c_inst, address, &regBuf, 1);
-  last_status = i2c_read_blocking(i2c0, address, &value, 1, false);
-  return ((uint16_t)value[0] << 8) || ((uint16_t)value[1]);
+  i2c_read_blocking(i2c0, address, value, 2, false);
+  if (DEBUG_READ)
+  {
+    printf("r2 %i : %i %i\n", regBuf, value[0], value[1]);
+  }
+  return (uint16_t)value[0] * 256 + value[1];
 }
 
 // Read a 32-bit register
 uint32_t VL53L0X::readReg32Bit(uint8_t reg)
 {
   uint8_t regBuf = reg;
+  i2c_write_blocking(i2c_inst, address, &regBuf, 1, true);
+  last_status = 0;
+
   uint8_t value[4];
-  i2c_write_blocking(i2c_inst, address, &regBuf, 1);
-  last_status = i2c_read_blocking(i2c0, address, &value, 1, false);
-  return ((uint32_t)value[0] << 24) || ((uint32_t)value[1] << 16) || ((uint32_t)value[2] << 8) || ((uint32_t)value[3]);
+  i2c_read_blocking(i2c0, address, value, 4, false);
+  if (DEBUG_READ)
+  {
+    printf("r4 %i : %i %i %i %i\n", regBuf, value[0], value[1], value[2], value[3]);
+  }
+  return (uint32_t)value[0] * 16777216 + value[1] * 65536 + value[2] * 256 + value[3];
 }
 
 // Write an arbitrary number of bytes from the given array to the sensor,
 // starting at the given register
 void VL53L0X::writeMulti(uint8_t reg, uint8_t const *src, uint8_t count)
 {
-  uint8_t regBuf = reg;
-  i2c_write_blocking(i2c_inst, address, &regBuf, 1);
-  i2c_write_blocking(i2c_inst, address, src, count);
+  uint8_t Buf[count + 1];
+  Buf[0] = reg;
+  for (int i = 0; i < count + 1; i++)
+  {
+    Buf[i + 1] = *(src + i);
+  }
+  i2c_write_blocking(i2c_inst, address, Buf, count + 1, false);
+  if (DEBUG_WRITE)
+  {
+    printf("wn %i : %i", reg, *src);
+    printf("  ::  %i : %i\n", reg, readReg(reg));
+  }
   last_status = 0;
 }
 
@@ -394,8 +444,13 @@ void VL53L0X::writeMulti(uint8_t reg, uint8_t const *src, uint8_t count)
 void VL53L0X::readMulti(uint8_t reg, uint8_t *dst, uint8_t count)
 {
   uint8_t regBuf = reg;
-  i2c_write_blocking(i2c_inst, address, &regBuf, 1);
-  last_status = i2c_read_blocking(i2c0, address, dst, count, false);
+  i2c_write_blocking(i2c_inst, address, &regBuf, 1, true);
+  i2c_read_blocking(i2c_inst, address, dst, count, false);
+  if (DEBUG_READ)
+  {
+    printf("rn %i : %i\n", regBuf, *dst);
+  }
+  last_status = 0;
 }
 
 // Set the return signal rate limit check value in units of MCPS (mega counts
@@ -873,7 +928,6 @@ uint16_t VL53L0X::readRangeSingleMillimeters()
       return 65535;
     }
   }
-
   return readRangeContinuousMillimeters();
 }
 
