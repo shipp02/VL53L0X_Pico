@@ -8,7 +8,7 @@ project (Continuous)
 
 
 
-add_executable(Continuous Continuous)
+add_executable(Continuous Continuous.cpp)
 
 
 target_link_libraries(Continuous
