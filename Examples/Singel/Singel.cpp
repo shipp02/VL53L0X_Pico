@@ -28,7 +28,7 @@ int main()
     init_VL53L0X();
     while (true)
     {
-        uint16_t value = readRangeSingleMillimeters();
+        uint16_t value = sensor.readRangeSingleMillimeters();
         printf("\n%i", value);
         if (sensor.timeoutOccurred())
         {

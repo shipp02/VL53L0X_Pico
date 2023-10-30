@@ -3,8 +3,10 @@ cmake_minimum_required (VERSION 3.12)
 
 add_subdirectory(lib/VL53L0X)
 
+include(pico_sdk_import.cmake)
 project (Singel)
 
+pico_sdk_init()
 
 
 
@@ -26,4 +28,3 @@ pico_enable_stdio_uart(Singel 0)
 pico_add_extra_outputs(Singel)
 
 # add url via pico_set_program_url
-example_auto_set_url(Singel)
