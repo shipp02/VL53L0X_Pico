@@ -8,3 +8,4 @@ Version: 1.0.0
 Release date: 2021 3 8
 jonasbechler@gmail.com
 
+Does protection work?
